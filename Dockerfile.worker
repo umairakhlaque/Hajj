@@ -1,0 +1,19 @@
+# ============================================
+# AskVault — Job Worker Dockerfile
+# Runs the pg-boss background worker
+# ============================================
+
+FROM node:20-alpine
+RUN apk add --no-cache openssl dumb-init
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npx prisma generate
+
+ENV NODE_ENV=production
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["npx", "tsx", "src/lib/jobs/worker.ts"]

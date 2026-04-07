@@ -8,11 +8,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
-    "jobs:worker": "tsx src/lib/jobs/worker.ts"
+    "jobs:worker": "tsx src/lib/jobs/worker.ts",
+    "setup": "bash scripts/setup.sh",
+    "gen-keys": "bash scripts/gen-keys.sh",
+    "validate-env": "tsx scripts/validate-env.ts",
+    "embed-seed": "tsx scripts/embed-seed-data.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "repository": {
     "type": "git",
