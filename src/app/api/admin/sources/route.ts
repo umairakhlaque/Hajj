@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess(source, 201);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return apiValidationError(err.errors[0]?.message ?? "Validation error");
+      return apiValidationError(err.issues?.[0]?.message ?? "Validation error");
     }
     if (err instanceof Error && err.message.includes("Unauthorized")) {
       return apiUnauthorized();

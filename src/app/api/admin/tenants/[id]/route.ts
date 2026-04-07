@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return apiSuccess(tenant);
   } catch (err) {
-    if (err instanceof z.ZodError) return apiValidationError(err.errors[0]?.message ?? "Validation error");
+    if (err instanceof z.ZodError) return apiValidationError(err.issues?.[0]?.message ?? "Validation error");
     if (err instanceof Error && err.message.includes("Unauthorized")) return apiUnauthorized();
     return apiError("Failed to update tenant", 500);
   }

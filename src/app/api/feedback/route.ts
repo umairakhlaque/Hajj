@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess({ id: feedback.id });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return apiValidationError(err.errors[0]?.message ?? "Invalid feedback");
+      return apiValidationError(err.issues?.[0]?.message ?? "Invalid feedback");
     }
     return apiError("Failed to submit feedback", 500);
   }

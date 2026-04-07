@@ -10,14 +10,10 @@ import type { RetrievedChunk } from "@/lib/security/prompt-injection";
 export interface RetrievalOptions {
   tenantId: string;
   query: string;
-  // Scope: which notebooks/collections to search
   scopeType?: "all" | "notebook" | "collection";
   scopeId?: string;
-  // Security: classification level allowed for this user
   allowedClassifications?: string[];
-  // Number of top results
   topK?: number;
-  // Minimum similarity score (0-1)
   minScore?: number;
 }
 
@@ -47,91 +43,124 @@ export async function retrieveRelevantChunks(
   const queryEmbedding = await embedText(query);
   const vectorLiteral = toVectorLiteral(queryEmbedding);
 
-  // Step 2: Build scope filter SQL
-  let scopeFilter = "";
-  const params: unknown[] = [tenantId, vectorLiteral, topK];
-
-  if (scopeType === "notebook" && scopeId) {
-    scopeFilter = `AND cc."notebookRecordId" = $${params.length + 1}`;
-    params.push(scopeId);
-  } else if (scopeType === "collection" && scopeId) {
-    // Resolve collection -> notebook IDs
+  // Step 2: Resolve collection scope to notebook IDs
+  let notebookIds: string[] = [];
+  if (scopeType === "collection" && scopeId) {
     const mappings = await prisma.notebookCollectionMapping.findMany({
       where: { notebookCollectionId: scopeId },
       select: { notebookRecordId: true },
     });
-    const notebookIds = mappings.map((m) => m.notebookRecordId);
+    notebookIds = mappings.map((m) => m.notebookRecordId);
     if (notebookIds.length === 0) {
       return { chunks: [], queryEmbedding };
     }
-    scopeFilter = `AND cc."notebookRecordId" = ANY($${params.length + 1}::text[])`;
-    params.push(notebookIds);
   }
 
-  // Step 3: Classification filter
-  const classFilter = `AND cc."classification" = ANY($${params.length + 1}::text[])`;
-  params.push(allowedClassifications);
-
-  // Step 4: Execute vector similarity search using pgvector cosine distance
-  // Lower cosine distance = higher similarity
-  // We convert: similarity = 1 - cosine_distance
-  const sql = `
-    SELECT
-      cc.id AS "chunkId",
-      cc."chunkText",
-      cc."sectionHeading",
-      cc."chunkIndex",
-      nr."displayName" AS "notebookName",
-      sr.title AS "sourceTitle",
-      1 - (cc.embedding <=> $2::vector) AS score
-    FROM "ContentChunk" cc
-    JOIN "SourceRecord" sr ON cc."sourceRecordId" = sr.id
-    JOIN "NotebookRecord" nr ON cc."notebookRecordId" = nr.id
-    WHERE
-      cc."tenantId" = $1
-      AND cc.status = 'EMBEDDED'
-      AND sr.status = 'APPROVED'
-      AND nr."isActive" = true
-      AND nr."isArchived" = false
-      ${scopeFilter}
-      ${classFilter}
-      AND (1 - (cc.embedding <=> $2::vector)) > ${minScore}
-    ORDER BY cc.embedding <=> $2::vector
-    LIMIT $3
-  `;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows = await (prisma as any).$queryRawUnsafe(sql, ...params) as Array<{
+  // Step 3: Execute vector similarity search
+  // We store embeddings as bytea and cast to vector at query time
+  type RawRow = {
     chunkId: string;
     chunkText: string;
     sectionHeading: string | null;
-    chunkIndex: number;
     notebookName: string;
     sourceTitle: string;
     score: number;
-  }>;
+  };
 
-  // Step 5: Re-rank by score (already sorted by cosine distance, but normalize)
+  let rows: RawRow[];
+
+  if (scopeType === "notebook" && scopeId) {
+    rows = await prisma.$queryRaw<RawRow[]>`
+      SELECT
+        cc.id AS "chunkId",
+        cc."chunkText",
+        cc."sectionHeading",
+        nr."displayName" AS "notebookName",
+        sr.title AS "sourceTitle",
+        1 - (cc.embedding::vector <=> ${vectorLiteral}::vector) AS score
+      FROM "ContentChunk" cc
+      JOIN "SourceRecord" sr ON cc."sourceRecordId" = sr.id
+      JOIN "NotebookRecord" nr ON cc."notebookRecordId" = nr.id
+      WHERE
+        cc."tenantId" = ${tenantId}
+        AND cc.status = 'EMBEDDED'
+        AND sr.status = 'APPROVED'
+        AND nr."isActive" = true
+        AND nr."isArchived" = false
+        AND cc."notebookRecordId" = ${scopeId}
+        AND cc."classification" = ANY(${allowedClassifications}::text[])
+        AND (1 - (cc.embedding::vector <=> ${vectorLiteral}::vector)) > ${minScore}
+      ORDER BY cc.embedding::vector <=> ${vectorLiteral}::vector
+      LIMIT ${topK}
+    `;
+  } else if (scopeType === "collection" && notebookIds.length > 0) {
+    rows = await prisma.$queryRaw<RawRow[]>`
+      SELECT
+        cc.id AS "chunkId",
+        cc."chunkText",
+        cc."sectionHeading",
+        nr."displayName" AS "notebookName",
+        sr.title AS "sourceTitle",
+        1 - (cc.embedding::vector <=> ${vectorLiteral}::vector) AS score
+      FROM "ContentChunk" cc
+      JOIN "SourceRecord" sr ON cc."sourceRecordId" = sr.id
+      JOIN "NotebookRecord" nr ON cc."notebookRecordId" = nr.id
+      WHERE
+        cc."tenantId" = ${tenantId}
+        AND cc.status = 'EMBEDDED'
+        AND sr.status = 'APPROVED'
+        AND nr."isActive" = true
+        AND nr."isArchived" = false
+        AND cc."notebookRecordId" = ANY(${notebookIds}::text[])
+        AND cc."classification" = ANY(${allowedClassifications}::text[])
+        AND (1 - (cc.embedding::vector <=> ${vectorLiteral}::vector)) > ${minScore}
+      ORDER BY cc.embedding::vector <=> ${vectorLiteral}::vector
+      LIMIT ${topK}
+    `;
+  } else {
+    rows = await prisma.$queryRaw<RawRow[]>`
+      SELECT
+        cc.id AS "chunkId",
+        cc."chunkText",
+        cc."sectionHeading",
+        nr."displayName" AS "notebookName",
+        sr.title AS "sourceTitle",
+        1 - (cc.embedding::vector <=> ${vectorLiteral}::vector) AS score
+      FROM "ContentChunk" cc
+      JOIN "SourceRecord" sr ON cc."sourceRecordId" = sr.id
+      JOIN "NotebookRecord" nr ON cc."notebookRecordId" = nr.id
+      WHERE
+        cc."tenantId" = ${tenantId}
+        AND cc.status = 'EMBEDDED'
+        AND sr.status = 'APPROVED'
+        AND nr."isActive" = true
+        AND nr."isArchived" = false
+        AND cc."classification" = ANY(${allowedClassifications}::text[])
+        AND (1 - (cc.embedding::vector <=> ${vectorLiteral}::vector)) > ${minScore}
+      ORDER BY cc.embedding::vector <=> ${vectorLiteral}::vector
+      LIMIT ${topK}
+    `;
+  }
+
+  // Step 4: Map to RetrievedChunk
   const chunks: RetrievedChunk[] = rows.map((row) => ({
     chunkId: row.chunkId,
     chunkText: row.chunkText,
     sectionHeading: row.sectionHeading ?? undefined,
     notebookName: row.notebookName,
     sourceTitle: row.sourceTitle,
-    score: parseFloat(row.score.toString()),
+    score: parseFloat(String(row.score)),
   }));
 
   return { chunks, queryEmbedding };
 }
 
 /**
- * Calculate a simple confidence score based on retrieval results.
- * Returns 0-1 where 1 = high confidence grounded answer.
+ * Calculate answer confidence from retrieved chunks (0–1).
  */
 export function calculateConfidence(chunks: RetrievedChunk[]): number {
   if (chunks.length === 0) return 0;
   const topScore = chunks[0].score;
   const avgScore = chunks.reduce((s, c) => s + c.score, 0) / chunks.length;
-  // Weighted: top score matters more
   return Math.min(1, topScore * 0.6 + avgScore * 0.4);
 }

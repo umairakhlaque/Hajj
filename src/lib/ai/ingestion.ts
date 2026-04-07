@@ -96,12 +96,14 @@ export async function ingestSource(sourceRecordId: string): Promise<{
       if (!embedding || embedding.length === 0) continue;
 
       const vectorLiteral = toVectorLiteral(embedding);
-      await (prisma as any).$executeRawUnsafe(
-        `UPDATE "ContentChunk" SET embedding = $1::vector, status = 'EMBEDDED', "embeddingModel" = $2, "updatedAt" = NOW() WHERE id = $3`,
-        vectorLiteral,
-        EMBEDDING_MODEL,
-        chunk.id
-      );
+      await prisma.$executeRaw`
+        UPDATE "ContentChunk"
+        SET embedding = ${vectorLiteral}::vector,
+            status = 'EMBEDDED',
+            "embeddingModel" = ${EMBEDDING_MODEL},
+            "updatedAt" = NOW()
+        WHERE id = ${chunk.id}
+      `;
       embeddedCount++;
     }
 

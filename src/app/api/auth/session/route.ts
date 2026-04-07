@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return apiValidationError(err.errors[0]?.message ?? "Invalid request");
+      return apiValidationError(err.issues?.[0]?.message ?? "Invalid request");
     }
     return apiError("Failed to create session", 500);
   }

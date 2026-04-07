@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     return apiSuccess({ jobId: syncJob.id, status: "RUNNING" }, 202);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return apiValidationError(err.errors[0]?.message ?? "Invalid request");
+      return apiValidationError(err.issues?.[0]?.message ?? "Invalid request");
     }
     if (err instanceof Error && err.message.includes("Unauthorized")) {
       return apiUnauthorized();

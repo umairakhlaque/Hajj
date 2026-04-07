@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     return apiValidationError(
       err instanceof z.ZodError
-        ? err.errors[0]?.message ?? "Invalid request"
+        ? err.issues?.[0]?.message ?? "Invalid request"
         : "Invalid JSON"
     );
   }

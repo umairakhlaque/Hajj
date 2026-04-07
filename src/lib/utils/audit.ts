@@ -3,7 +3,7 @@
 // ============================================
 
 import { prisma } from "@/lib/db/client";
-import type { AuditAction } from "@prisma/client";
+import type { AuditAction, Prisma } from "@prisma/client";
 
 export interface AuditLogParams {
   tenantId?: string;
@@ -21,9 +21,19 @@ export interface AuditLogParams {
  */
 export async function writeAuditLog(params: AuditLogParams): Promise<void> {
   try {
-    await prisma.auditLog.create({ data: params });
+    await prisma.auditLog.create({
+      data: {
+        action: params.action,
+        resourceType: params.resourceType,
+        resourceId: params.resourceId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+        ...(params.tenantId ? { tenant: { connect: { id: params.tenantId } } } : {}),
+        ...(params.userId ? { user: { connect: { id: params.userId } } } : {}),
+      },
+    });
   } catch (error) {
-    // Log to stderr but don't crash the request
     console.error("[AuditLog] Failed to write audit log:", error);
   }
 }

@@ -10,7 +10,6 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
-  url        = env("DATABASE_URL")
   extensions = [pgvector(map: "vector")]
 }
 
@@ -415,8 +414,8 @@ model ContentChunk {
   embeddingModel String?
 
   // pgvector embedding — 3072 dims for text-embedding-3-large
-  // Stored as Unsupported since Prisma doesn't have a Vector type yet
-  embedding      Unsupported("vector(3072)")?
+  // Stored as Bytes and cast to vector in raw SQL queries
+  embedding      Bytes?
 
   // Metadata for security filtering
   notebookRecordId String
