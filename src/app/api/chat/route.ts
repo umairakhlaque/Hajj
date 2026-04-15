@@ -27,7 +27,7 @@ import { SESSION_COOKIE } from "@/lib/auth/tenant-session";
 const ChatRequestSchema = z.object({
   message: z.string().min(1).max(2000),
   tenantSlug: z.string(),
-  sessionId: z.string().optional(),
+  sessionId: z.string().nullish(),
   scopeType: z.enum(["all", "notebook", "collection"]).optional().default("all"),
   scopeId: z.string().optional(),
   conversationHistory: z
