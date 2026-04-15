@@ -121,6 +121,13 @@ export async function POST(request: NextRequest) {
     const useNotebookLM = !!notebookLmId && !!process.env.NOTEBOOKLM_SESSION_FILE;
     const useGemini = !useNotebookLM && !!process.env.GEMINI_API_KEY;
 
+    console.log("[Chat Debug]", {
+      notebookLmId,
+      NOTEBOOKLM_SESSION_FILE: process.env.NOTEBOOKLM_SESSION_FILE,
+      useNotebookLM,
+      useGemini,
+    });
+
     const result = useNotebookLM
       ? await askNotebookLM(body.message, {
           notebookId: notebookLmId!,
