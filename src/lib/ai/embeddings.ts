@@ -1,56 +1,57 @@
 // ============================================
-// AskVault — OpenAI Embeddings
+// AskVault — Embeddings via Jina AI (free tier)
+// Drop-in replacement for OpenAI embeddings
 // ============================================
 
 import OpenAI from "openai";
 
-let openaiClient: OpenAI | null = null;
+let jinaClient: OpenAI | null = null;
 
-function getOpenAI(): OpenAI {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY not set");
-    openaiClient = new OpenAI({ apiKey });
+function getJina(): OpenAI {
+  if (!jinaClient) {
+    const apiKey = process.env.JINA_API_KEY;
+    if (!apiKey) throw new Error("JINA_API_KEY not set");
+    jinaClient = new OpenAI({
+      apiKey,
+      baseURL: "https://api.jina.ai/v1",
+    });
   }
-  return openaiClient;
+  return jinaClient;
 }
 
 export const EMBEDDING_MODEL =
-  process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-large";
+  process.env.EMBEDDING_MODEL ?? "jina-embeddings-v3";
 export const EMBEDDING_DIMENSIONS = parseInt(
-  process.env.OPENAI_EMBEDDING_DIMENSIONS ?? "3072"
+  process.env.EMBEDDING_DIMENSIONS ?? "1024"
 );
 
 /**
  * Generate embeddings for a single text.
  */
 export async function embedText(text: string): Promise<number[]> {
-  const openai = getOpenAI();
-  const response = await openai.embeddings.create({
+  const jina = getJina();
+  const response = await jina.embeddings.create({
     model: EMBEDDING_MODEL,
-    input: text.slice(0, 8191), // OpenAI token limit guard
-    dimensions: EMBEDDING_DIMENSIONS,
-  });
-  return response.data[0].embedding;
+    input: text.slice(0, 8191),
+  } as Parameters<typeof jina.embeddings.create>[0]);
+  return (response.data[0] as { embedding: number[] }).embedding;
 }
 
 /**
  * Generate embeddings for multiple texts in batch.
- * Respects OpenAI batch limit of 2048 inputs.
  */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
-  const openai = getOpenAI();
+  const jina = getJina();
   const BATCH_SIZE = 100;
   const results: number[][] = [];
 
   for (let i = 0; i < texts.length; i += BATCH_SIZE) {
     const batch = texts.slice(i, i + BATCH_SIZE).map((t) => t.slice(0, 8191));
-    const response = await openai.embeddings.create({
+    const response = await jina.embeddings.create({
       model: EMBEDDING_MODEL,
       input: batch,
-      dimensions: EMBEDDING_DIMENSIONS,
-    });
-    results.push(...response.data.map((d) => d.embedding));
+    } as Parameters<typeof jina.embeddings.create>[0]);
+    results.push(...response.data.map((d) => (d as { embedding: number[] }).embedding));
   }
 
   return results;

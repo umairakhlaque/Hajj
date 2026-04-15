@@ -15,20 +15,23 @@ import {
   type RetrievedChunk,
 } from "@/lib/security/prompt-injection";
 
-const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o";
+const CHAT_MODEL = process.env.CHAT_MODEL ?? "deepseek-chat";
 const NO_ANSWER_THRESHOLD = 0.45;
 const NO_GROUNDING_RESPONSE =
   "I could not find a reliable answer to your question in this knowledge base. Please try rephrasing your question or contact the knowledge base administrator.";
 
-let openaiClient: OpenAI | null = null;
+let deepseekClient: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY not set");
-    openaiClient = new OpenAI({ apiKey });
+  if (!deepseekClient) {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error("DEEPSEEK_API_KEY not set");
+    deepseekClient = new OpenAI({
+      apiKey,
+      baseURL: "https://api.deepseek.com",
+    });
   }
-  return openaiClient;
+  return deepseekClient;
 }
 
 export interface ChatMessage {
