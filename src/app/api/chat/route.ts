@@ -8,6 +8,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { generateGroundedAnswer } from "@/lib/ai/chat-engine";
 import { generateGeminiAnswer } from "@/lib/ai/gemini-engine";
+import { askNotebookLM } from "@/lib/ai/notebooklm-engine";
 import {
   apiSuccess,
   apiError,
@@ -115,10 +116,19 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    // Use Gemini if API key is set, otherwise fall back to DeepSeek
-    const useGemini = !!process.env.GEMINI_API_KEY;
+    // Priority: NotebookLM → Gemini → DeepSeek
+    const notebookLmId = tenant.notebookLmId ?? null;
+    const useNotebookLM = !!notebookLmId && !!process.env.NOTEBOOKLM_SESSION_FILE;
+    const useGemini = !useNotebookLM && !!process.env.GEMINI_API_KEY;
 
-    const result = useGemini
+    const result = useNotebookLM
+      ? await askNotebookLM(body.message, {
+          notebookId: notebookLmId!,
+          sessionId: chatSession.id,
+          conversationHistory: body.conversationHistory,
+          systemPromptOverride: tenant.systemPromptOverride,
+        })
+      : useGemini
       ? await generateGeminiAnswer(body.message, {
           tenantId: tenant.id,
           notebookId: body.scopeType === "notebook" ? body.scopeId : undefined,
