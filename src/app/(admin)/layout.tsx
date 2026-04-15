@@ -3,7 +3,8 @@
 // ============================================
 
 import { redirect } from "next/navigation";
-import { getAdminUser } from "@/lib/auth/admin";
+import { auth } from "@clerk/nextjs/server";
+import { getAdminUser, syncClerkUser } from "@/lib/auth/admin";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 
 export default async function AdminLayout({
@@ -11,6 +12,16 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
+  // Auto-sync Clerk user into our database on every admin visit
+  try {
+    await syncClerkUser(userId);
+  } catch {
+    // ignore sync errors — getAdminUser will handle auth check
+  }
+
   const admin = await getAdminUser();
   if (!admin) redirect("/sign-in");
 
