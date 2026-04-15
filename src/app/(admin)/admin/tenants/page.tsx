@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Building2, Plus, Users, BookOpen, MessageSquare, Globe, Lock, Key } from "lucide-react";
+import { Building2, Plus, Users, BookOpen, MessageSquare, Globe, Lock, Key, Settings, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ interface Tenant {
   plan: string;
   isActive: boolean;
   authMode: string;
+  notebookLmId?: string | null;
   createdAt: string;
   _count?: { users: number; notebookRecords: number; chatSessions: number };
 }
@@ -46,6 +47,11 @@ export default function TenantsPage() {
   const [newName, setNewName] = useState("");
   const [newSlug, setNewSlug] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Edit modal state
+  const [editTenant, setEditTenant] = useState<Tenant | null>(null);
+  const [editNotebookLmId, setEditNotebookLmId] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/tenants")
@@ -75,6 +81,41 @@ export default function TenantsPage() {
       }
     } finally {
       setCreating(false);
+    }
+  };
+
+  const openEdit = (tenant: Tenant) => {
+    setEditTenant(tenant);
+    setEditNotebookLmId(tenant.notebookLmId ?? "");
+  };
+
+  const handleSave = async () => {
+    if (!editTenant) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/tenants/${editTenant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notebookLmId: editNotebookLmId.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Workspace updated");
+        setTenants((prev) =>
+          prev.map((t) =>
+            t.id === editTenant.id
+              ? { ...t, notebookLmId: editNotebookLmId.trim() || null }
+              : t
+          )
+        );
+        setEditTenant(null);
+      } else {
+        toast.error(data.error ?? "Failed to update workspace");
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -157,13 +198,20 @@ export default function TenantsPage() {
                       <p className="text-xs text-white/30">/t/{tenant.slug}/chat</p>
                     </div>
                   </div>
-                  <div className="flex gap-1.5">
+                  <div className="flex items-center gap-1.5">
                     <Badge variant={(planColors[tenant.plan] ?? "ghost") as never} className="text-[10px]">
                       {tenant.plan}
                     </Badge>
                     <Badge variant={tenant.isActive ? "success" : "danger"} className="text-[10px]">
                       {tenant.isActive ? "Active" : "Inactive"}
                     </Badge>
+                    <button
+                      onClick={() => openEdit(tenant)}
+                      className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors"
+                      title="Settings"
+                    >
+                      <Settings className="w-3 h-3 text-white/40" />
+                    </button>
                   </div>
                 </div>
 
@@ -185,11 +233,67 @@ export default function TenantsPage() {
                     <AuthIcon className="w-3 h-3" />
                     {tenant.authMode}
                   </div>
-                  <span>{formatDistanceToNow(new Date(tenant.createdAt), { addSuffix: true })}</span>
+                  <div className="flex items-center gap-2">
+                    {tenant.notebookLmId && (
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-full">
+                        NotebookLM linked
+                      </span>
+                    )}
+                    <span>{formatDistanceToNow(new Date(tenant.createdAt), { addSuffix: true })}</span>
+                  </div>
                 </div>
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-surface-800 border border-white/10 rounded-2xl p-6 space-y-5"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">Workspace Settings</h2>
+                <p className="text-xs text-white/40 mt-0.5">{editTenant.name}</p>
+              </div>
+              <button
+                onClick={() => setEditTenant(null)}
+                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center"
+              >
+                <X className="w-4 h-4 text-white/40" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-white/50 block mb-1.5">
+                  NotebookLM Notebook ID
+                </label>
+                <Input
+                  placeholder="e.g. 4497b952-db06-48ca-a593-0c7ecae98159"
+                  value={editNotebookLmId}
+                  onChange={(e) => setEditNotebookLmId(e.target.value)}
+                />
+                <p className="text-[10px] text-white/25 mt-1.5">
+                  Found in the NotebookLM URL: notebooklm.google.com/notebooklm?corpus=<strong>ID</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setEditTenant(null)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

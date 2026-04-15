@@ -19,6 +19,7 @@ const UpdateTenantSchema = z.object({
   showSourceSnippets: z.boolean().optional(),
   allowCrossNotebook: z.boolean().optional(),
   systemPromptOverride: z.string().nullable().optional(),
+  notebookLmId: z.string().nullable().optional(),
 });
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
