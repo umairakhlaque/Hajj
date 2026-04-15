@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { generateGroundedAnswer } from "@/lib/ai/chat-engine";
+import { generateGeminiAnswer } from "@/lib/ai/gemini-engine";
 import {
   apiSuccess,
   apiError,
@@ -114,19 +115,29 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    // Generate grounded answer
-    const result = await generateGroundedAnswer(body.message, {
-      retrieval: {
-        tenantId: tenant.id,
-        query: body.message,
-        scopeType: body.scopeType,
-        scopeId: body.scopeId,
-        allowedClassifications: ["PUBLIC", "TENANT_VISIBLE", "INTERNAL"],
-      },
-      conversationHistory: body.conversationHistory,
-      strictGroundedMode: tenant.strictGroundedMode,
-      systemPromptOverride: tenant.systemPromptOverride,
-    });
+    // Use Gemini if API key is set, otherwise fall back to DeepSeek
+    const useGemini = !!process.env.GEMINI_API_KEY;
+
+    const result = useGemini
+      ? await generateGeminiAnswer(body.message, {
+          tenantId: tenant.id,
+          notebookId: body.scopeType === "notebook" ? body.scopeId : undefined,
+          conversationHistory: body.conversationHistory,
+          strictGroundedMode: tenant.strictGroundedMode,
+          systemPromptOverride: tenant.systemPromptOverride,
+        })
+      : await generateGroundedAnswer(body.message, {
+          retrieval: {
+            tenantId: tenant.id,
+            query: body.message,
+            scopeType: body.scopeType,
+            scopeId: body.scopeId,
+            allowedClassifications: ["PUBLIC", "TENANT_VISIBLE", "INTERNAL"],
+          },
+          conversationHistory: body.conversationHistory,
+          strictGroundedMode: tenant.strictGroundedMode,
+          systemPromptOverride: tenant.systemPromptOverride,
+        });
 
     // Store assistant message
     const assistantMessage = await prisma.chatMessage.create({
@@ -134,14 +145,16 @@ export async function POST(request: NextRequest) {
         chatSessionId: chatSession.id,
         role: "assistant",
         content: result.answer,
-        retrievedChunks: result.retrievedChunks.map((c) => ({
-          chunkId: c.chunkId,
-          score: c.score,
-          notebookName: c.notebookName,
-          sourceTitle: c.sourceTitle,
-          sectionHeading: c.sectionHeading,
-        })),
-        confidenceScore: result.confidenceScore,
+        retrievedChunks: "retrievedChunks" in result
+          ? (result.retrievedChunks as { chunkId: string; score: number; notebookName: string; sourceTitle: string; sectionHeading?: string }[]).map((c) => ({
+              chunkId: c.chunkId,
+              score: c.score,
+              notebookName: c.notebookName,
+              sourceTitle: c.sourceTitle,
+              sectionHeading: c.sectionHeading,
+            }))
+          : [],
+        confidenceScore: "confidenceScore" in result ? result.confidenceScore as number : 1.0,
         isGrounded: result.isGrounded,
         modelUsed: result.modelUsed,
         latencyMs: result.latencyMs,
@@ -158,11 +171,11 @@ export async function POST(request: NextRequest) {
       sessionId: chatSession.id,
       messageId: assistantMessage.id,
       isGrounded: result.isGrounded,
-      confidenceScore: result.confidenceScore,
+      confidenceScore: "confidenceScore" in result ? result.confidenceScore as number : 1.0,
       citations: citations.map((c) => ({
         notebookName: c.notebookName,
         sourceTitle: tenant.showCitations ? c.sourceTitle : undefined,
-        sectionHeading: c.sectionHeading,
+        sectionHeading: "sectionHeading" in c ? c.sectionHeading : undefined,
       })),
       latencyMs: result.latencyMs,
     });
