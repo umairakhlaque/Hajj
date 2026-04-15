@@ -81,7 +81,10 @@ export async function POST(request: NextRequest) {
           },
         },
       },
-      include: { branding: true },
+      include: {
+        branding: true,
+        _count: { select: { users: true, notebookRecords: true, chatSessions: true } },
+      },
     });
 
     await writeAuditLog({

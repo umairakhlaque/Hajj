@@ -21,7 +21,7 @@ interface Tenant {
   isActive: boolean;
   authMode: string;
   createdAt: string;
-  _count: { users: number; notebookRecords: number; chatSessions: number };
+  _count?: { users: number; notebookRecords: number; chatSessions: number };
 }
 
 const planColors: Record<string, string> = {
@@ -169,9 +169,9 @@ export default function TenantsPage() {
 
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   {[
-                    { icon: Users, value: tenant._count.users, label: "Users" },
-                    { icon: BookOpen, value: tenant._count.notebookRecords, label: "Notebooks" },
-                    { icon: MessageSquare, value: tenant._count.chatSessions, label: "Chats" },
+                    { icon: Users, value: tenant._count?.users ?? 0, label: "Users" },
+                    { icon: BookOpen, value: tenant._count?.notebookRecords ?? 0, label: "Notebooks" },
+                    { icon: MessageSquare, value: tenant._count?.chatSessions ?? 0, label: "Chats" },
                   ].map(({ icon: Icon, value, label }) => (
                     <div key={label} className="text-center p-2 rounded-xl bg-white/3">
                       <p className="text-base font-bold text-white">{value}</p>
