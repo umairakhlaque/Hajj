@@ -47,8 +47,11 @@ export interface GeminiChatResult {
 /**
  * Build system prompt for grounded answers.
  */
-function buildSystemPrompt(override?: string | null): string {
+function buildSystemPrompt(override?: string | null, hasSources = false): string {
   if (override) return override;
+  if (!hasSources) {
+    return `You are a knowledgeable Hajj assistant. Answer questions about Hajj, Umrah, and Islamic pilgrimage clearly and accurately. Support Arabic, Urdu, and English — respond in the same language the user asks in. Use clear, helpful language.`;
+  }
   return `You are AskVault, a precise knowledge assistant. Your role is to answer questions ONLY using the information provided in the sources given to you.
 
 STRICT RULES:
@@ -125,10 +128,13 @@ export async function generateGeminiAnswer(
     };
   }
 
+  // No sources but not strict — answer from general knowledge
+  const hasSources = sources.length > 0;
+
   const gemini = getGemini();
   const model = gemini.getGenerativeModel({
     model: "gemini-1.5-flash",
-    systemInstruction: buildSystemPrompt(systemPromptOverride),
+    systemInstruction: buildSystemPrompt(systemPromptOverride, hasSources),
   });
 
   // Build content parts — YouTube URLs get special treatment
@@ -177,11 +183,13 @@ export async function generateGeminiAnswer(
   const chat = model.startChat({ history });
 
   // Build the final message with sources + question
-  const finalParts: Part[] = [
-    { text: "Here are your knowledge sources:\n\n" },
-    ...contentParts,
-    { text: `\n\nUser question: ${sanitized}` },
-  ];
+  const finalParts: Part[] = hasSources
+    ? [
+        { text: "Here are your knowledge sources:\n\n" },
+        ...contentParts,
+        { text: `\n\nUser question: ${sanitized}` },
+      ]
+    : [{ text: sanitized }];
 
   let answer = NO_GROUNDING_RESPONSE;
   try {
