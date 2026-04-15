@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils/cn";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -25,7 +22,6 @@ export function StatsCard({
   icon: Icon,
   trend,
   variant = "default",
-  delay = 0,
 }: StatsCardProps) {
   const variantStyles = {
     default: "border-white/8 bg-surface-700/50",
@@ -42,10 +38,7 @@ export function StatsCard({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay, ease: "easeOut" }}
+    <div
       className={cn(
         "rounded-2xl border p-5 transition-all duration-200 hover:border-white/15",
         variantStyles[variant]
@@ -83,6 +76,6 @@ export function StatsCard({
       {description && (
         <p className="text-xs text-white/30 mt-2">{description}</p>
       )}
-    </motion.div>
+    </div>
   );
 }
