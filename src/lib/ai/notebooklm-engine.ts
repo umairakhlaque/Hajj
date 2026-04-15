@@ -15,11 +15,16 @@ let nlmClient: NotebookLMClient | null = null;
 
 async function getClient(): Promise<NotebookLMClient> {
   if (!nlmClient) {
-    // Session file saved by: npx notebooklm-sdk login
-    const cookiesFile = process.env.NOTEBOOKLM_SESSION_FILE ??
-      path.join(os.homedir(), ".notebooklm", "session.json");
-
-    nlmClient = await NotebookLMClient.connect({ cookiesFile });
+    // Support raw cookie string (easiest to set up)
+    const cookieString = process.env.NOTEBOOKLM_COOKIES;
+    if (cookieString) {
+      nlmClient = await NotebookLMClient.connect({ cookies: cookieString });
+    } else {
+      // Fallback to session file
+      const cookiesFile = process.env.NOTEBOOKLM_SESSION_FILE ??
+        path.join(os.homedir(), ".notebooklm", "session.json");
+      nlmClient = await NotebookLMClient.connect({ cookiesFile });
+    }
   }
   return nlmClient;
 }

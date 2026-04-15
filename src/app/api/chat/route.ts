@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
   try {
     // Priority: NotebookLM → Gemini → DeepSeek
     const notebookLmId = tenant.notebookLmId ?? null;
-    const useNotebookLM = !!notebookLmId && !!process.env.NOTEBOOKLM_SESSION_FILE;
+    const useNotebookLM = !!notebookLmId && (!!process.env.NOTEBOOKLM_COOKIES || !!process.env.NOTEBOOKLM_SESSION_FILE);
     const useGemini = !useNotebookLM && !!process.env.GEMINI_API_KEY;
 
     console.log("[Chat Debug]", {
