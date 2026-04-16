@@ -117,36 +117,48 @@ export async function POST(request: NextRequest) {
 
   try {
     const notebookLmId = tenant.notebookLmId ?? null;
+    const hasGemini = !!process.env.GEMINI_API_KEY;
     const useNotebookLM = !!notebookLmId && (!!process.env.NOTEBOOKLM_COOKIES || !!process.env.NOTEBOOKLM_SESSION_FILE);
-    const useGemini = !useNotebookLM && !!process.env.GEMINI_API_KEY;
 
-    const result = useNotebookLM
-      ? await askNotebookLM(body.message, {
+    const geminiOptions = {
+      tenantId: tenant.id,
+      notebookId: body.scopeType === "notebook" ? body.scopeId : undefined,
+      conversationHistory: body.conversationHistory,
+      strictGroundedMode: tenant.strictGroundedMode,
+      systemPromptOverride: tenant.systemPromptOverride,
+    };
+
+    let result;
+    if (useNotebookLM) {
+      try {
+        result = await askNotebookLM(body.message, {
           notebookId: notebookLmId!,
           sessionId: chatSession.id,
           conversationHistory: body.conversationHistory,
           systemPromptOverride: tenant.systemPromptOverride,
-        })
-      : useGemini
-      ? await generateGeminiAnswer(body.message, {
-          tenantId: tenant.id,
-          notebookId: body.scopeType === "notebook" ? body.scopeId : undefined,
-          conversationHistory: body.conversationHistory,
-          strictGroundedMode: tenant.strictGroundedMode,
-          systemPromptOverride: tenant.systemPromptOverride,
-        })
-      : await generateGroundedAnswer(body.message, {
-          retrieval: {
-            tenantId: tenant.id,
-            query: body.message,
-            scopeType: body.scopeType,
-            scopeId: body.scopeId,
-            allowedClassifications: ["PUBLIC", "TENANT_VISIBLE", "INTERNAL"],
-          },
-          conversationHistory: body.conversationHistory,
-          strictGroundedMode: tenant.strictGroundedMode,
-          systemPromptOverride: tenant.systemPromptOverride,
         });
+      } catch (nlmError) {
+        // NotebookLM failed — fall back to Gemini or DeepSeek
+        console.warn("[Chat] NotebookLM unavailable, falling back:", (nlmError as Error).message?.slice(0, 80));
+        result = hasGemini
+          ? await generateGeminiAnswer(body.message, geminiOptions)
+          : await generateGroundedAnswer(body.message, {
+              retrieval: { tenantId: tenant.id, query: body.message, scopeType: body.scopeType, scopeId: body.scopeId, allowedClassifications: ["PUBLIC", "TENANT_VISIBLE", "INTERNAL"] },
+              conversationHistory: body.conversationHistory,
+              strictGroundedMode: tenant.strictGroundedMode,
+              systemPromptOverride: tenant.systemPromptOverride,
+            });
+      }
+    } else if (hasGemini) {
+      result = await generateGeminiAnswer(body.message, geminiOptions);
+    } else {
+      result = await generateGroundedAnswer(body.message, {
+        retrieval: { tenantId: tenant.id, query: body.message, scopeType: body.scopeType, scopeId: body.scopeId, allowedClassifications: ["PUBLIC", "TENANT_VISIBLE", "INTERNAL"] },
+        conversationHistory: body.conversationHistory,
+        strictGroundedMode: tenant.strictGroundedMode,
+        systemPromptOverride: tenant.systemPromptOverride,
+      });
+    }
 
     // Store assistant message
     const assistantMessage = await prisma.chatMessage.create({

@@ -202,7 +202,7 @@ export async function generateGeminiAnswer(
 
   return {
     answer,
-    isGrounded: true,
+    isGrounded: hasSources,
     modelUsed: "gemini-1.5-flash",
     latencyMs: Date.now() - startTime,
     injectionDetected,
