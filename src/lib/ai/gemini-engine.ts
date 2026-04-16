@@ -66,38 +66,44 @@ STRICT RULES:
 
 /**
  * Fetch all approved sources for a notebook (or all notebooks in a tenant).
+ *
+ * Schema facts:
+ *  - SourceRecord has NO direct tenantId — tenant is accessed via notebookRecord relation
+ *  - SourceRecord FK to notebook is notebookRecordId (not notebookId)
+ *  - External URL field is externalUrl (not sourceUrl)
+ *  - NotebookRecord display name is displayName (not name)
  */
 async function fetchSources(tenantId: string, notebookId?: string) {
   const sources = await prisma.sourceRecord.findMany({
     where: {
-      tenantId,
+      notebookRecord: { tenantId },
       status: "APPROVED",
-      ...(notebookId ? { notebookId } : {}),
+      ...(notebookId ? { notebookRecordId: notebookId } : {}),
     },
     select: {
       id: true,
       title: true,
       connectorType: true,
-      sourceUrl: true,
+      externalUrl: true,
       rawContent: true,
-      notebookId: true,
+      notebookRecordId: true,
     },
     take: 20,
   });
 
-  // Fetch notebook names separately
-  const notebookIds = [...new Set(sources.map((s) => s.notebookId).filter(Boolean))] as string[];
-  const notebooks = notebookIds.length > 0
+  // Fetch notebook display names
+  const notebookRecordIds = [...new Set(sources.map((s) => s.notebookRecordId))] as string[];
+  const notebooks = notebookRecordIds.length > 0
     ? await prisma.notebookRecord.findMany({
-        where: { id: { in: notebookIds } },
-        select: { id: true, name: true },
+        where: { id: { in: notebookRecordIds } },
+        select: { id: true, displayName: true },
       })
     : [];
-  const notebookMap = Object.fromEntries(notebooks.map((n) => [n.id, n.name]));
+  const notebookMap = Object.fromEntries(notebooks.map((n) => [n.id, n.displayName]));
 
   return sources.map((s) => ({
     ...s,
-    notebookName: s.notebookId ? notebookMap[s.notebookId] ?? "Unknown" : "Unknown",
+    notebookName: notebookMap[s.notebookRecordId] ?? "Unknown",
   }));
 }
 
@@ -117,18 +123,9 @@ export async function generateGeminiAnswer(
   // Fetch sources
   const sources = await fetchSources(tenantId, notebookId);
 
-  if (sources.length === 0 && strictGroundedMode) {
-    return {
-      answer: NO_GROUNDING_RESPONSE,
-      isGrounded: false,
-      modelUsed: "gemini-1.5-flash",
-      latencyMs: Date.now() - startTime,
-      injectionDetected,
-      citations: [],
-    };
-  }
-
-  // No sources but not strict — answer from general knowledge
+  // If sources exist but strictGroundedMode is on, Gemini will only answer from them.
+  // If NO sources exist at all, fall through to general knowledge regardless of strict mode
+  // (there is nothing to be strict about — returning "not found" with an empty KB is bad UX).
   const hasSources = sources.length > 0;
 
   const gemini = getGemini();
@@ -147,17 +144,17 @@ export async function generateGeminiAnswer(
       notebookName: source.notebookName,
     });
 
-    const sourceUrl = source.sourceUrl as string | null;
+    const externalUrl = source.externalUrl as string | null;
     const isYoutube =
       source.connectorType === "YOUTUBE_TRANSCRIPT" &&
-      !!(sourceUrl?.includes("youtube.com") || sourceUrl?.includes("youtu.be"));
+      !!(externalUrl?.includes("youtube.com") || externalUrl?.includes("youtu.be"));
 
-    if (isYoutube && sourceUrl) {
+    if (isYoutube && externalUrl) {
       // Pass YouTube URL directly to Gemini
       contentParts.push({
         fileData: {
           mimeType: "video/youtube" as "video/mp4",
-          fileUri: sourceUrl,
+          fileUri: externalUrl,
         },
       });
     } else if (source.rawContent) {
@@ -165,10 +162,10 @@ export async function generateGeminiAnswer(
       contentParts.push({
         text: `[SOURCE: ${source.title}]\n${source.rawContent}\n`,
       });
-    } else if (sourceUrl) {
+    } else if (externalUrl) {
       // Pass URL as text reference
       contentParts.push({
-        text: `[SOURCE: ${source.title}]\nURL: ${sourceUrl}\n`,
+        text: `[SOURCE: ${source.title}]\nURL: ${externalUrl}\n`,
       });
     }
   }
