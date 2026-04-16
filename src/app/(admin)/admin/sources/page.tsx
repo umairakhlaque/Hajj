@@ -4,8 +4,8 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
   CheckCircle,
@@ -14,7 +14,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Search,
-  Filter,
+  Upload,
+  X,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,11 +45,132 @@ const statusConfig: Record<string, { icon: typeof CheckCircle; label: string; ba
   ARCHIVED: { icon: XCircle, label: "Archived", badge: "ghost" },
 };
 
+function UploadModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [notebookRecordId, setNotebookRecordId] = useState("");
+  const [notebooks, setNotebooks] = useState<{ id: string; displayName: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/notebooks")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setNotebooks(d.data); });
+  }, []);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    if (!title) setTitle(f.name.replace(/\.pdf$/i, ""));
+  };
+
+  const handleUpload = async () => {
+    if (!file || !title.trim() || !notebookRecordId) {
+      toast.error("Please fill in all fields and select a PDF");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("title", title.trim());
+      fd.append("notebookRecordId", notebookRecordId);
+      fd.append("autoApprove", "true");
+
+      const res = await fetch("/api/admin/sources/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("PDF uploaded and approved — Gemini can now use it");
+        onSuccess();
+        onClose();
+      } else {
+        toast.error(data.error ?? "Upload failed");
+      }
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-surface-800 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold text-white">Upload PDF Source</h2>
+          <button onClick={onClose} className="text-white/40 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Notebook selector */}
+          <div>
+            <label className="text-xs text-white/50 mb-1.5 block">Knowledge Base (Notebook)</label>
+            <select
+              value={notebookRecordId}
+              onChange={(e) => setNotebookRecordId(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-vault-500/50"
+            >
+              <option value="">Select a notebook…</option>
+              {notebooks.map((n) => (
+                <option key={n.id} value={n.id}>{n.displayName}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* File picker */}
+          <div
+            onClick={() => fileRef.current?.click()}
+            className="border-2 border-dashed border-white/15 rounded-xl p-6 text-center cursor-pointer hover:border-vault-500/40 transition-colors"
+          >
+            <Upload className="w-8 h-8 text-white/20 mx-auto mb-2" />
+            {file ? (
+              <p className="text-sm text-white font-medium">{file.name}</p>
+            ) : (
+              <p className="text-sm text-white/40">Click to select a PDF file</p>
+            )}
+            <p className="text-xs text-white/20 mt-1">Max 20 MB</p>
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden" onChange={handleFile} />
+          </div>
+
+          {/* Title */}
+          <div>
+            <label className="text-xs text-white/50 mb-1.5 block">Source Title</label>
+            <Input
+              placeholder="e.g. Hajj Step by Step Guide"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+
+          <Button
+            className="w-full"
+            onClick={handleUpload}
+            disabled={uploading || !file || !title.trim() || !notebookRecordId}
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? "Uploading…" : "Upload & Approve"}
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function SourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [showUpload, setShowUpload] = useState(false);
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -109,6 +232,15 @@ export default function SourcesPage() {
   );
 
   return (
+    <>
+    <AnimatePresence>
+      {showUpload && (
+        <UploadModal
+          onClose={() => setShowUpload(false)}
+          onSuccess={fetchSources}
+        />
+      )}
+    </AnimatePresence>
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -117,9 +249,9 @@ export default function SourcesPage() {
             Review and manage knowledge content
           </p>
         </div>
-        <Button size="sm">
-          <FileText className="w-3.5 h-3.5" />
-          Add Source
+        <Button size="sm" onClick={() => setShowUpload(true)}>
+          <Upload className="w-3.5 h-3.5" />
+          Upload PDF
         </Button>
       </div>
 
@@ -253,5 +385,6 @@ export default function SourcesPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
