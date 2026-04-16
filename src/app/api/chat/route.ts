@@ -204,10 +204,8 @@ export async function POST(request: NextRequest) {
     const errMsg = (error as Error)?.message ?? String(error);
     console.error("[Chat API] Generation error:", errMsg);
 
-    // In development: show the real error in the chat so it's visible without dev tools
-    const displayMsg = process.env.NODE_ENV === "development"
-      ? `DEBUG ERROR: ${errMsg}`
-      : "I encountered an error while processing your question. Please try again.";
+    // Return 200 with the error text so the frontend displays it in the chat bubble
+    const displayMsg = `DEBUG: ${errMsg}`;
 
     await prisma.chatMessage.create({
       data: {
@@ -218,6 +216,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return apiError(errMsg, 500);
+    return apiSuccess({
+      answer: displayMsg,
+      sessionId: chatSession.id,
+      messageId: "error",
+      isGrounded: false,
+      confidenceScore: 0,
+      citations: [],
+      latencyMs: 0,
+    });
+
   }
 }
