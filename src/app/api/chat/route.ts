@@ -54,10 +54,8 @@ export async function POST(request: NextRequest) {
   let body: z.infer<typeof ChatRequestSchema>;
   try {
     const raw = await request.json();
-    console.log("[Chat Debug] Raw request body:", JSON.stringify(raw));
     body = ChatRequestSchema.parse(raw);
   } catch (err) {
-    console.error("[Chat Debug] Validation error:", err);
     return apiValidationError(
       err instanceof z.ZodError
         ? err.issues?.[0]?.message ?? "Invalid request"
@@ -118,17 +116,9 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    // Priority: NotebookLM → Gemini → DeepSeek
     const notebookLmId = tenant.notebookLmId ?? null;
     const useNotebookLM = !!notebookLmId && (!!process.env.NOTEBOOKLM_COOKIES || !!process.env.NOTEBOOKLM_SESSION_FILE);
     const useGemini = !useNotebookLM && !!process.env.GEMINI_API_KEY;
-
-    console.log("[Chat Debug]", {
-      notebookLmId,
-      NOTEBOOKLM_SESSION_FILE: process.env.NOTEBOOKLM_SESSION_FILE,
-      useNotebookLM,
-      useGemini,
-    });
 
     const result = useNotebookLM
       ? await askNotebookLM(body.message, {
