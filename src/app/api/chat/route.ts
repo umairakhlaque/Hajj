@@ -201,30 +201,15 @@ export async function POST(request: NextRequest) {
       latencyMs: result.latencyMs,
     });
   } catch (error) {
-    const errMsg = (error as Error)?.message ?? String(error);
-    console.error("[Chat API] Generation error:", errMsg);
-
-    // Return 200 with the error text so the frontend displays it in the chat bubble
-    const displayMsg = `DEBUG: ${errMsg}`;
-
+    console.error("[Chat API] Generation error:", (error as Error)?.message ?? error);
     await prisma.chatMessage.create({
       data: {
         chatSessionId: chatSession.id,
         role: "assistant",
-        content: displayMsg,
+        content: "I encountered an error while processing your question. Please try again.",
         isGrounded: false,
       },
     });
-
-    return apiSuccess({
-      answer: displayMsg,
-      sessionId: chatSession.id,
-      messageId: "error",
-      isGrounded: false,
-      confidenceScore: 0,
-      citations: [],
-      latencyMs: 0,
-    });
-
+    return apiError("Failed to generate answer", 500);
   }
 }
